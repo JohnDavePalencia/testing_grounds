@@ -1,0 +1,897 @@
+"""exercise_3_student_manager,
+    loads_student_marks_from_studentMarks_txt,
+    lets_the_user_view_everyone_view_one_student_and_find_the_highest_and_lowest_scores,
+    sorts_adds_deletes_and_updates_students_and_saves_every_change_to_the_file,
+    shows_a_tkinter_canvas_logo_screen_with_ascii_art_then_a_help_screen
+"""
+import time
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+FILE_NAME = "studentMarks.txt"
+#hint_text_for_the_search_box (cuz ppl be like that sometimes="me")
+SEARCH_HINT = "type name or code..."
+
+#ascii_art_banner_r_before_the_quotes_so_backslashes_print_as_they_are
+ART = r"""
+======================================
+ ___ _____ _   _ ___  ___ _  _ _____
+/ __|_   _| | | |   \| __| \| |_   _|
+\__ \ | | | |_| | |) | _|| .` | | |
+|___/ |_|  \___/|___/|___|_|\_| |_|
+ __  __   _   _  _   _   ___ ___ ___
+|  \/  | /_\ | \| | /_\ / __| __| _ \
+| |\/| |/ _ \| .` |/ _ \ (_ | _||   /
+|_|  |_/_/ \_\_|\_/_/ \_\___|___|_|_\
+======================================
+"""
+
+#bsu_logo_the_square_is_made_of_hash_signs_and_the_letters_are_gaps_cut_out_of_it
+BSU_LOGO = """##################################
+##################################
+##################################
+##################################
+####      ####      ##  ####  ####
+####  ###  ##  #######  ####  ####
+####  ###  ##  #######  ####  ####
+####      ####     ###  ####  ####
+####  ###  ########  #  ####  ####
+####  ###  ########  #  ####  ####
+####      ####      ###      #####
+##################################
+##################################
+##################################
+##################################"""
+
+#logo_screen_settings
+SPLASH_MS = 3000  # how_long_the_logo_screen_stays_in_milliseconds
+SPLASH_STEPS = 30  # how_many_little_jumps_the_loading_bar_makes
+BAR_X = 70  # left_edge_of_the_loading_bar_in_pixels
+BAR_Y = 470  # top_edge_of_the_loading_bar_in_pixels
+BAR_W = 340  # loading_bar_width_in_pixels
+BAR_H = 18  # loading_bar_height_in_pixels
+splash_job = None  # remembers_the_next_scheduled_bar_jump_so_it_can_be_cancelled
+
+#main_window
+root = tk.Tk()
+root.title("STUDENT MANAGER")
+root.geometry("1100x800")
+root.configure(bg="black")
+
+#scrollbar_style_green_on_black_to_match_the_terminal_look
+style = ttk.Style()
+style.theme_use("clam")
+style.configure("Terminal.Vertical.TScrollbar",
+                background="lawngreen",
+                troughcolor="black",
+                bordercolor="lawngreen",
+                lightcolor="lawngreen",
+                darkcolor="lawngreen",
+                arrowcolor="black",
+                relief="flat")
+style.map("Terminal.Vertical.TScrollbar",
+          background=[("active", "lawngreen"), ("pressed", "green")])
+
+
+#reading_and_saving_the_file
+def load_stdnts():
+    #reads_the_file_and_gives_back_a_list_of_student_dictionaries
+    student_list = []
+
+    #no_file_means_no_students_nobody_turned_up_to_class
+    try:
+        file = open(FILE_NAME, "r", encoding="utf-8")
+    except FileNotFoundError:
+        return student_list
+
+    lines = file.read().splitlines()
+    file.close()
+
+    for line in lines[1:]:  # skip_line_1_it_is_only_the_class_size
+        if line.strip() == "":
+            continue
+        parts = line.split(",")
+
+        #broken_lines_are_skipped_instead_of_crashing_the_program
+        try:
+            student = {
+                "code": int(parts[0]),
+                "name": parts[1].strip(),
+                "c1": int(parts[2]),
+                "c2": int(parts[3]),
+                "c3": int(parts[4]),
+                "exam": int(parts[5]),
+            }
+        except (ValueError, IndexError):
+            continue
+
+        student_list.append(student)
+    return student_list
+
+
+def save_stdnts():
+    #writes_every_student_back_to_the_file_line_1_is_the_class_size
+    file = open(FILE_NAME, "w", encoding="utf-8")
+    file.write(str(len(stdnts)) + "\n")
+    for s in stdnts:
+        file.write(f"{s['code']},{s['name']},{s['c1']},{s['c2']},{s['c3']},{s['exam']}\n")
+    file.close()
+
+
+#maths_for_the_marks
+def get_coursework(student):
+    #adds_up_the_three_coursework_marks_out_of_60
+    return student["c1"] + student["c2"] + student["c3"]
+
+
+def get_total(student):
+    #coursework_plus_exam_out_of_160
+    return get_coursework(student) + student["exam"]
+
+
+def get_prcnt(student):
+    #works_out_the_overall_percentage_using_the_160_marks
+    return get_total(student) / 160 * 100
+
+
+def get_grade(percentage):
+    #turns_a_percentage_into_a_grade_hope_nobody_gets_an_f
+    if percentage >= 70:
+        return "A"
+    elif percentage >= 60:
+        return "B"
+    elif percentage >= 50:
+        return "C"
+    elif percentage >= 40:
+        return "D"
+    else:
+        return "F"
+
+
+def format_student(student):
+    #turns_one_student_into_nice_text_to_show_on_screen
+    percentage = get_prcnt(student)
+    text = f"Name:       {student['name']}\n"
+    text += f"Number:     {student['code']}\n"
+    text += f"Coursework: {get_coursework(student)} / 60\n"
+    text += f"Exam:       {student['exam']} / 100\n"
+    text += f"Overall:    {percentage:.1f}%\n"
+    text += f"Grade:      {get_grade(percentage)}\n"
+    return text
+
+
+#helpers_for_the_screen
+def hint_clear(event):
+    #clears_the_hint_when_the_box_is_clicked
+    if search_box.get() == SEARCH_HINT:
+        search_box.delete(0, tk.END)
+    search_box.config(fg="lawngreen")
+
+
+def hint_show(event=None):
+    #puts_the_hint_back_if_the_box_is_empty
+    if search_box.get().strip() == "":
+        search_box.delete(0, tk.END)
+        search_box.insert(0, SEARCH_HINT)
+        search_box.config(fg="gray50")
+
+
+def get_search_text():
+    #what_the_user_typed_in_the_search_box_the_hint_does_not_count_as_typing
+    text = search_box.get()
+    if text == SEARCH_HINT:
+        return ""
+    return text
+
+
+def disp_txt(text):
+    #clears_the_output_box_and_puts_new_text_in_it
+    output_box.delete("1.0", tk.END)
+    output_box.insert(tk.END, text)
+
+
+def set_status(message, colour="lawngreen"):
+    #adds_a_new_line_to_the_history_box_with_the_time_and_a_short_message
+    #the_box_is_locked_so_it_is_unlocked_just_for_a_moment_to_write_to_it
+    status_box.config(state="normal")
+    status_box.tag_configure(colour, foreground=colour)
+    status_box.insert(tk.END, time.strftime("%H:%M:%S") + " ", "time")
+    status_box.insert(tk.END, "> " + message + "\n", colour)
+
+    #keep_only_the_last_100_lines_so_the_history_does_not_grow_forever
+    line_count = int(status_box.index("end-1c").split(".")[0])
+    if line_count > 100:
+        status_box.delete("1.0", "2.0")
+
+    status_box.see(tk.END)  # scrolls_down_so_the_newest_line_is_always_visible
+    status_box.config(state="disabled")
+
+
+def no_stdnts():
+    #if_the_list_is_empty_shows_a_message_and_gives_back_true
+    if len(stdnts) == 0:
+        disp_txt("NO STUDENT DATA FOUND!\n"
+                 "Check that studentMarks.txt is in the same folder.\n"
+                 "(You can still use ADD STUDENT to create records.)")
+        set_status("NO STUDENT DATA", "red")
+        return True
+    return False
+
+
+def find_stdnt(search_text):
+    #looks_for_a_student_by_code_or_name_gives_back_none_if_not_found
+    search_text = search_text.strip().lower()
+    for s in stdnts:
+        if search_text == str(s["code"]) or search_text == s["name"].lower():
+            return s
+    return None
+
+
+def set_box(box, value):
+    #puts_a_value_in_an_entry_box
+    box.delete(0, tk.END)
+    box.insert(0, str(value))
+
+
+def clear_form():
+    #empties_the_search_box_and_all_the_details_boxes
+    search_box.delete(0, tk.END)
+    hint_show()
+    root.focus()  # moves_the_cursor_out_so_the_hint_stays_visible
+
+    code_box.delete(0, tk.END)
+    name_box.delete(0, tk.END)
+    c1_box.delete(0, tk.END)
+    c2_box.delete(0, tk.END)
+    c3_box.delete(0, tk.END)
+    exam_box.delete(0, tk.END)
+
+
+#logo_transition_screen
+def animate_splash(step=0):
+    #grows_the_loading_bar_a_bit_each_time_blinks_the_cursor_then_closes_the_logo_screen
+    global splash_job
+    splash_canvas.coords(bar_fill, BAR_X + 1, BAR_Y + 1,
+                         BAR_X + 1 + (BAR_W - 2) * step / SPLASH_STEPS, BAR_Y + BAR_H - 1)
+    splash_canvas.itemconfig(percent_text, text=f"{100 * step // SPLASH_STEPS}%")
+
+    #the_underscore_blinks_every_other_step_like_a_terminal_cursor
+    cursor = "_" if (step // 2) % 2 == 0 else " "
+    splash_canvas.itemconfig(loading_text, text="> LOADING STUDENT RECORDS" + cursor)
+
+    if step >= SPLASH_STEPS:
+        close_splash()
+        return
+    splash_job = root.after(SPLASH_MS // SPLASH_STEPS, animate_splash, step + 1)
+
+
+def open_splash():
+    #covers_the_whole_window_with_the_logo_screen_and_starts_the_loading_bar
+    splash_frame.place(x=0, y=0, relwidth=1, relheight=1)
+    splash_frame.lift()
+    animate_splash(0)
+
+
+def close_splash(event=None):
+    #removes_the_logo_screen_so_the_student_manager_shows_underneath
+    global splash_job
+    if splash_job is not None:
+        root.after_cancel(splash_job)
+        splash_job = None
+    splash_frame.place_forget()
+
+
+#menu_options_1_to_4
+def disp_all():
+    #option_1_shows_every_student_then_the_class_summary
+    if no_stdnts():
+        return
+    text = ""
+    total_percentage = 0
+    for s in stdnts:
+        text += format_student(s) + "\n"
+        total_percentage += get_prcnt(s)
+
+    average = total_percentage / len(stdnts)
+    text += f"Students in class:  {len(stdnts)}\n"
+    text += f"Average percentage: {average:.1f}%"
+    disp_txt(text)
+    set_status(f"VIEWING ALL ({len(stdnts)})")
+
+
+def disp_indiv():
+    #option_2_shows_the_student_typed_into_the_search_box
+    s = find_stdnt(get_search_text())
+    if s is None:
+        disp_txt("Student not found.\nType a name or code in the SEARCH box.")
+        set_status("STUDENT NOT FOUND", "red")
+        return
+
+    disp_txt(format_student(s))
+    set_status(f"VIEWING: {s['name']}")
+
+    #copies_the_details_into_the_boxes_ready_for_update
+    set_box(code_box, s["code"])
+    set_box(name_box, s["name"])
+    set_box(c1_box, s["c1"])
+    set_box(c2_box, s["c2"])
+    set_box(c3_box, s["c3"])
+    set_box(exam_box, s["exam"])
+
+
+def disp_high():
+    #option_3_shows_student_with_the_highest_mark_top_of_the_class
+    if no_stdnts():
+        return
+
+    best = stdnts[0]
+    for s in stdnts:
+        if get_total(s) > get_total(best):
+            best = s
+    disp_txt("HIGHEST SCORE\n\n" + format_student(best))
+    set_status(f"HIGHEST: {best['name']}")
+
+
+def disp_low():
+    #option_4_shows_the_student_with_the_lowest_mark
+    if no_stdnts():
+        return
+
+    worst = stdnts[0]
+    for s in stdnts:
+        if get_total(s) < get_total(worst):
+            worst = s
+    disp_txt("LOWEST SCORE\n\n" + format_student(worst))
+    set_status(f"LOWEST: {worst['name']}")
+
+
+#extension_option_5_sort
+def disp_sorted(high_first):
+    #shows_every_student_sorted_by_total_mark
+    #key_is_what_sorted_compares_reverse_flips_the_order
+    sorted_list = sorted(stdnts, key=get_total, reverse=high_first)
+    text = ""
+    for s in sorted_list:
+        text += format_student(s) + "\n"
+    disp_txt(text)
+    set_status("SORTED HIGH-LOW" if high_first else "SORTED LOW-HIGH")
+
+
+def sort_low_high():
+    #option_5a_lowest_to_highest
+    if no_stdnts():
+        return
+    disp_sorted(False)
+
+
+def sort_high_low():
+    #option_5b_highest_to_lowest
+    if no_stdnts():
+        return
+    disp_sorted(True)
+
+
+#extension_options_6_to_8_add_delete_update
+def is_valid_num(text, low, high):
+    #true_if_the_text_is_a_whole_number_between_low_and_high
+    if not text.isdigit():
+        return False
+    number = int(text)
+    return low <= number <= high
+
+
+def read_details():
+    #reads_the_details_boxes_gives_back_a_student_dictionary_or_none_if_something_is_wrong
+    code = code_box.get().strip()
+    name = name_box.get().strip()
+    c1 = c1_box.get().strip()
+    c2 = c2_box.get().strip()
+    c3 = c3_box.get().strip()
+    exam = exam_box.get().strip()
+
+    if not is_valid_num(code, 1000, 9999):
+        disp_txt("Code must be a whole number from 1000 to 9999.")
+        set_status("INVALID CODE", "red")
+        return None
+    if name == "" or "," in name:
+        disp_txt("Please enter a name (no commas).")
+        set_status("INVALID NAME", "red")
+        return None
+    if (not is_valid_num(c1, 0, 20)
+            or not is_valid_num(c2, 0, 20)
+            or not is_valid_num(c3, 0, 20)):
+        disp_txt("Each coursework mark must be a whole number from 0 to 20.")
+        set_status("INVALID COURSEWORK", "red")
+        return None
+    if not is_valid_num(exam, 0, 100):
+        disp_txt("Exam mark must be a whole number from 0 to 100.")
+        set_status("INVALID EXAM MARK", "red")
+        return None
+
+    #all_good_so_make_a_student_from_the_boxes
+    return {
+        "code": int(code),
+        "name": name,
+        "c1": int(c1),
+        "c2": int(c2),
+        "c3": int(c3),
+        "exam": int(exam),
+    }
+
+
+def add_stdnt():
+    #option_6_adds_a_student_from_the_details_boxes_and_saves
+    details = read_details()
+    if details is None:
+        return
+    if find_stdnt(str(details["code"])) is not None:
+        disp_txt("A student with that code already exists.")
+        set_status("CODE ALREADY EXISTS", "red")
+        return
+
+    stdnts.append(details)
+    save_stdnts()
+    clear_form()
+    disp_txt("STUDENT ADDED\n\n" + format_student(details))
+    set_status(f"ADDED {details['name']} - FILE SAVED")
+
+
+def del_stdnt():
+    #option_7_deletes_the_student_in_the_search_box_and_saves
+    s = find_stdnt(get_search_text())
+    if s is None:
+        disp_txt("Student not found.\nType a name or code in the SEARCH box.")
+        set_status("STUDENT NOT FOUND", "red")
+        return
+
+    #popup_asks_are_you_sure_before_anything_is_deleted
+    if not messagebox.askyesno("CONFIRM DELETE", f"Delete {s['name']} ({s['code']})?"):
+        disp_txt("Delete cancelled.")
+        set_status("DELETE CANCELLED")
+        return
+
+    stdnts.remove(s)
+    save_stdnts()
+    clear_form()
+    disp_txt(f"DELETED: {s['name']} ({s['code']})")
+    set_status(f"DELETED {s['name']} - FILE SAVED")
+
+
+def upd_stdnt():
+    #option_8_replaces_the_searched_students_details_with_the_details_boxes_and_saves
+    s = find_stdnt(get_search_text())
+    if s is None:
+        disp_txt("Student not found.\nType a name or code in the SEARCH box.")
+        set_status("STUDENT NOT FOUND", "red")
+        return
+
+    details = read_details()
+    if details is None:
+        return
+
+    #changed_code_must_not_belong_to_somebody_else
+    other = find_stdnt(str(details["code"]))
+    if other is not None and other is not s:
+        disp_txt("That code is already used by another student.")
+        set_status("CODE ALREADY USED", "red")
+        return
+
+    s.update(details)  # copies_every_value_from_details_into_the_student
+    save_stdnts()
+    clear_form()
+    disp_txt("STUDENT UPDATED\n\n" + format_student(s))
+    set_status(f"UPDATED {s['name']} - FILE SAVED")
+
+
+def disp_help():
+    #shows_the_ascii_art_banner_and_how_to_use_it
+    text = ART + "\n"
+    text += "[WELCOME TO THE CLASS RECORDS TERMINAL]\n"
+    text += "======================================\n\n"
+    text += "HOW TO USE:\n"
+    text += "[0. HOME        replay the BSU logo screen]\n"
+    text += "[1. VIEW ALL    every student + class average]\n"
+    text += "[2. VIEW ONE    type a name or code in the\n"
+    text += "                 SEARCH box, then click it]\n"
+    text += "[3. HIGHEST     top student in the class]\n"
+    text += "[4. LOWEST      bottom student in the class]\n"
+    text += "[5. SORT        list students by total mark]\n"
+    text += "[6. ADD         fill in the DETAILS boxes,\n"
+    text += "                 then click it]\n"
+    text += "[7. DELETE      type a name or code in SEARCH,\n"
+    text += "                 then click it]\n"
+    text += "[8. UPDATE      use VIEW ONE, change the DETAILS\n"
+    text += "                 boxes, then click UPDATE]\n"
+    text += "[9. HELP        shows this screen again]\n\n"
+    text += "TIP: scroll long lists with the mouse wheel.\n"
+    text += "GRADES: A 70%+  B 60%+  C 50%+  D 40%+  F below"
+    disp_txt(text)
+    set_status("HELP SCREEN")
+
+
+#load_the_students_from_the_file
+stdnts = load_stdnts()
+
+#build_the_screen
+
+#left_side_the_menu_buttons_terminal_green_on_black
+menu_frame = tk.Frame(root, bg="black")
+menu_frame.pack(side="left", fill="y", padx=10, pady=10)
+
+title_label = tk.Label(menu_frame, text="[ * STUDENT * ]\n[ * MANAGER * ]",
+                       fg="lawngreen",
+                       bg="black",
+                       font=("Courier", 16, "bold"))
+title_label.pack(pady=10)
+
+home_butt = tk.Button(menu_frame, text="[ 0. HOME ]",
+                      command=open_splash,
+                      cursor="hand2",
+                      width=22,
+                      bg="black",
+                      fg="lawngreen",
+                      activebackground="lawngreen",
+                      activeforeground="black",
+                      relief="flat",
+                      highlightthickness=1,
+                      highlightbackground="lawngreen",
+                      font=("Courier", 11, "bold"))
+home_butt.pack(pady=3)
+
+view_all_butt = tk.Button(menu_frame, text="[ 1. VIEW ALL ]",
+                          command=disp_all,
+                          cursor="hand2",
+                          width=22,
+                          bg="black",
+                          fg="lawngreen",
+                          activebackground="lawngreen",
+                          activeforeground="black",
+                          relief="flat",
+                          highlightthickness=1,
+                          highlightbackground="lawngreen",
+                          font=("Courier", 11, "bold"))
+view_all_butt.pack(pady=3)
+
+view_one_butt = tk.Button(menu_frame, text="[ 2. VIEW ONE ]",
+                          command=disp_indiv,
+                          cursor="hand2",
+                          width=22,
+                          bg="black",
+                          fg="lawngreen",
+                          activebackground="lawngreen",
+                          activeforeground="black",
+                          relief="flat",
+                          highlightthickness=1,
+                          highlightbackground="lawngreen",
+                          font=("Courier", 11, "bold"))
+view_one_butt.pack(pady=3)
+
+highest_butt = tk.Button(menu_frame, text="[ 3. HIGHEST SCORE ]",
+                         command=disp_high,
+                         cursor="hand2",
+                         width=22,
+                         bg="black",
+                         fg="lawngreen",
+                         activebackground="lawngreen",
+                         activeforeground="black",
+                         relief="flat",
+                         highlightthickness=1,
+                         highlightbackground="lawngreen",
+                         font=("Courier", 11, "bold"))
+highest_butt.pack(pady=3)
+
+lowest_butt = tk.Button(menu_frame, text="[ 4. LOWEST SCORE ]",
+                        command=disp_low,
+                        cursor="hand2",
+                        width=22,
+                        bg="black",
+                        fg="lawngreen",
+                        activebackground="lawngreen",
+                        activeforeground="black",
+                        relief="flat",
+                        highlightthickness=1,
+                        highlightbackground="lawngreen",
+                        font=("Courier", 11, "bold"))
+lowest_butt.pack(pady=3)
+
+#extension_buttons_5_to_8
+sort_low_butt = tk.Button(menu_frame, text="[ 5A. SORT LOW-HIGH ]",
+                          command=sort_low_high,
+                          cursor="hand2",
+                          width=22,
+                          bg="black",
+                          fg="lawngreen",
+                          activebackground="lawngreen",
+                          activeforeground="black",
+                          relief="flat",
+                          highlightthickness=1,
+                          highlightbackground="lawngreen",
+                          font=("Courier", 11, "bold"))
+sort_low_butt.pack(pady=3)
+
+sort_high_butt = tk.Button(menu_frame, text="[ 5B. SORT HIGH-LOW ]",
+                           command=sort_high_low,
+                           cursor="hand2",
+                           width=22,
+                           bg="black",
+                           fg="lawngreen",
+                           activebackground="lawngreen",
+                           activeforeground="black",
+                           relief="flat",
+                           highlightthickness=1,
+                           highlightbackground="lawngreen",
+                           font=("Courier", 11, "bold"))
+sort_high_butt.pack(pady=3)
+
+add_butt = tk.Button(menu_frame, text="[ 6. ADD STUDENT ]",
+                     command=add_stdnt,
+                     cursor="hand2",
+                     width=22,
+                     bg="black",
+                     fg="lawngreen",
+                     activebackground="lawngreen",
+                     activeforeground="black",
+                     relief="flat",
+                     highlightthickness=1,
+                     highlightbackground="lawngreen",
+                     font=("Courier", 11, "bold"))
+add_butt.pack(pady=3)
+
+del_butt = tk.Button(menu_frame, text="[ 7. DELETE STUDENT ]",
+                     command=del_stdnt,
+                     cursor="hand2",
+                     width=22,
+                     bg="black",
+                     fg="lawngreen",
+                     activebackground="lawngreen",
+                     activeforeground="black",
+                     relief="flat",
+                     highlightthickness=1,
+                     highlightbackground="lawngreen",
+                     font=("Courier", 11, "bold"))
+del_butt.pack(pady=3)
+
+upd_butt = tk.Button(menu_frame, text="[ 8. UPDATE STUDENT ]",
+                     command=upd_stdnt,
+                     cursor="hand2",
+                     width=22,
+                     bg="black",
+                     fg="lawngreen",
+                     activebackground="lawngreen",
+                     activeforeground="black",
+                     relief="flat",
+                     highlightthickness=1,
+                     highlightbackground="lawngreen",
+                     font=("Courier", 11, "bold"))
+upd_butt.pack(pady=3)
+
+help_butt = tk.Button(menu_frame, text="[ 9. HELP ]",
+                      command=disp_help,
+                      cursor="hand2",
+                      width=22,
+                      bg="black",
+                      fg="lawngreen",
+                      activebackground="lawngreen",
+                      activeforeground="black",
+                      relief="flat",
+                      highlightthickness=1,
+                      highlightbackground="lawngreen",
+                      font=("Courier", 11, "bold"))
+help_butt.pack(pady=3)
+
+#quit_is_red_like_an_error_message_in_a_terminal
+quit_butt = tk.Button(menu_frame, text="QUIT",
+                      command=root.destroy,
+                      cursor="hand2",
+                      width=22,
+                      bg="black",
+                      fg="red",
+                      activebackground="red",
+                      activeforeground="black",
+                      relief="flat",
+                      highlightthickness=1,
+                      highlightbackground="red",
+                      font=("Courier", 11, "bold"))
+quit_butt.pack(pady=3)
+
+#history_terminal_at_the_bottom_left_a_boxed_log_of_everything_the_user_has_done
+status_wrap = tk.Frame(menu_frame, bg="black")
+status_wrap.pack(side="bottom", fill="x", pady=(0, 5))
+
+status_scroll = ttk.Scrollbar(status_wrap, orient="vertical",
+                              style="Terminal.Vertical.TScrollbar",
+                              cursor="hand2")
+status_scroll.pack(side="right", fill="y")
+
+status_box = tk.Text(status_wrap,
+                     width=28,
+                     height=7,
+                     bg="black",
+                     fg="lawngreen",
+                     selectbackground="lawngreen",
+                     selectforeground="black",
+                     font=("Courier", 9, "bold"),
+                     relief="flat",
+                     highlightthickness=1,
+                     highlightbackground="lawngreen",
+                     highlightcolor="lawngreen",
+                     padx=4,
+                     pady=2,
+                     wrap="word",
+                     state="disabled",
+                     cursor="arrow",
+                     yscrollcommand=status_scroll.set)
+status_box.pack(side="left", fill="x", expand=True)
+status_scroll.config(command=status_box.yview)
+status_box.tag_configure("time", foreground="gray50")
+
+status_title = tk.Label(menu_frame, text="[ HISTORY LOG ]",
+                        fg="gray70",
+                        bg="black",
+                        font=("Courier", 9, "bold"))
+status_title.pack(side="bottom")
+
+#right_side_the_search_box_the_details_boxes_and_the_output_box
+output_frame = tk.Frame(root, bg="black")
+output_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+
+search_label = tk.Label(output_frame, text="SEARCH (NAME OR CODE) - VIEW ONE, DELETE, UPDATE:",
+                        fg="gray70",
+                        bg="black",
+                        font=("Courier", 11, "bold"))
+search_label.pack(anchor="w")
+
+search_box = tk.Entry(output_frame, width=20,
+                      font=("Courier", 12, "bold"),
+                      bg="black",
+                      fg="lawngreen",
+                      insertbackground="lawngreen",
+                      selectbackground="lawngreen",
+                      selectforeground="black",
+                      relief="flat",
+                      highlightthickness=1,
+                      highlightbackground="lawngreen",
+                      highlightcolor="lawngreen")
+search_box.pack(anchor="w", pady=5)
+
+#show_the_hint_in_gray_and_clear_it_when_clicked
+search_box.insert(0, SEARCH_HINT)
+search_box.config(fg="gray50")
+search_box.bind("<FocusIn>", hint_clear)
+search_box.bind("<FocusOut>", hint_show)
+
+#details_boxes_used_by_add_and_update
+details_label = tk.Label(output_frame, text="DETAILS - ADD, UPDATE:",
+                         fg="gray70",
+                         bg="black",
+                         font=("Courier", 11, "bold"))
+details_label.pack(anchor="w", pady=(10, 0))
+
+form_frame = tk.Frame(output_frame, bg="black")
+form_frame.pack(anchor="w")
+
+
+def make_form_box(label_text, column, width):
+    #makes_a_small_label_in_row_0_with_an_entry_box_under_it_in_row_1
+    label = tk.Label(form_frame, text=label_text,
+                     fg="gray70",
+                     bg="black",
+                     font=("Courier", 9, "bold"))
+    label.grid(row=0, column=column)
+
+    box = tk.Entry(form_frame, width=width,
+                   font=("Courier", 12, "bold"),
+                   bg="black",
+                   fg="lawngreen",
+                   insertbackground="lawngreen",
+                   selectbackground="lawngreen",
+                   selectforeground="black",
+                   relief="flat",
+                   highlightthickness=1,
+                   highlightbackground="lawngreen",
+                   highlightcolor="lawngreen")
+    box.grid(row=1, column=column, padx=3)
+    return box
+
+
+code_box = make_form_box("CODE", 0, 8)
+name_box = make_form_box("NAME", 1, 16)
+c1_box = make_form_box("COURSEWORK 1", 2, 8)
+c2_box = make_form_box("COURSEWORK 2", 3, 8)
+c3_box = make_form_box("COURSEWORK 3", 4, 8)
+exam_box = make_form_box("EXAM", 5, 8)
+
+#output_box_use_the_mouse_wheel_to_scroll_when_the_list_is_long
+output_wrap = tk.Frame(output_frame, bg="black")
+output_wrap.pack(fill="both", expand=True, pady=(10, 0))
+
+output_scroll = ttk.Scrollbar(output_wrap, orient="vertical",
+                              style="Terminal.Vertical.TScrollbar",
+                              cursor="hand2")
+output_scroll.pack(side="right", fill="y")
+
+output_box = tk.Text(output_wrap, bg="black",
+                     fg="lawngreen",
+                     insertbackground="lawngreen",
+                     selectbackground="lawngreen",
+                     selectforeground="black",
+                     font=("Courier", 12, "bold"),
+                     relief="flat",
+                     highlightthickness=1,
+                     highlightbackground="lawngreen",
+                     highlightcolor="lawngreen",
+                     wrap="word",
+                     yscrollcommand=output_scroll.set)
+output_box.pack(side="left", fill="both", expand=True)
+output_scroll.config(command=output_box.yview)
+
+#start_main_screen_is_ready_underneath_the_logo_screen
+if len(stdnts) == 0:
+    no_stdnts()
+else:
+    disp_help()
+
+#clock_in_the_top_right_corner_shows_the_date_and_a_ticking_time
+clock_label = tk.Label(output_frame, text="",
+                       fg="lawngreen",
+                       bg="black",
+                       justify="right",
+                       font=("Courier", 12, "bold"))
+clock_label.place(relx=1.0, rely=0.0, anchor="ne")
+
+
+def update_clock():
+    #rewrites_the_clock_text_then_asks_tkinter_to_run_this_again_in_1_second
+    clock_label.config(text=time.strftime("%a %d %b %Y").upper() + "\n" + time.strftime("%H:%M:%S"))
+    root.after(1000, update_clock)
+
+
+update_clock()
+
+#first_status_message_once_the_file_has_been_loaded
+if len(stdnts) == 0:
+    set_status("NO DATA FILE FOUND", "red")
+else:
+    set_status(f"READY - {len(stdnts)} STUDENTS LOADED")
+
+#build_the_logo_screen_one_canvas_green_on_black_like_the_rest_of_the_terminal
+splash_frame = tk.Frame(root, bg="black", cursor="hand2")
+
+splash_canvas = tk.Canvas(splash_frame, width=480, height=600,
+                          bg="black",
+                          highlightthickness=0,
+                          cursor="hand2")
+splash_canvas.place(relx=0.5, rely=0.5, anchor="center")
+
+#the_ascii_logo_is_written_onto_the_canvas_as_text_centred_at_the_top
+splash_canvas.create_text(240, 10, text=BSU_LOGO, anchor="n", justify="center",
+                          fill="lawngreen", font=("Courier", 11, "bold"))
+
+splash_canvas.create_text(240, 335, text="B A T H   S P A",
+                          fill="lawngreen", font=("Courier", 14, "bold"))
+splash_canvas.create_text(240, 360, text="U N I V E R S I T Y",
+                          fill="lawngreen", font=("Courier", 14, "bold"))
+splash_canvas.create_text(240, 398, text="R A K   C A M P U S",
+                          fill="lawngreen", font=("Courier", 14, "bold"))
+splash_canvas.create_text(240, 440, text="[ * STUDENT MANAGER * ]",
+                          fill="lawngreen", font=("Courier", 16, "bold"))
+
+#loading_bar_a_green_outline_with_a_green_rectangle_that_grows_inside_it
+splash_canvas.create_rectangle(BAR_X, BAR_Y, BAR_X + BAR_W, BAR_Y + BAR_H,
+                               outline="lawngreen", width=1)
+bar_fill = splash_canvas.create_rectangle(BAR_X + 1, BAR_Y + 1, BAR_X + 1, BAR_Y + BAR_H - 1,
+                                          fill="lawngreen", outline="")
+percent_text = splash_canvas.create_text(BAR_X + BAR_W + 10, BAR_Y + BAR_H // 2, text="0%",
+                                         fill="lawngreen", font=("Courier", 12, "bold"), anchor="w")
+loading_text = splash_canvas.create_text(240, BAR_Y + 45, text="> LOADING STUDENT RECORDS_",
+                                         fill="gray70", font=("Courier", 10, "bold"))
+splash_canvas.create_text(240, BAR_Y + 80, text="(click anywhere to skip)",
+                          fill="gray50", font=("Courier", 9))
+
+#clicking_anywhere_on_the_logo_screen_skips_it
+splash_frame.bind("<Button-1>", close_splash)
+splash_canvas.bind("<Button-1>", close_splash)
+
+open_splash()
+
+root.mainloop()
